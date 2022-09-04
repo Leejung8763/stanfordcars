@@ -38,7 +38,7 @@ def create_logger(path, formatter):
 
     return logger
 
-logger = create_logger(path=f"{wkdir}/cnn_model/log/{args.model}_{datetime.datetime.now().strftime('%y%m%d')}", formatter="[%(asctime)s][%(levelname)s] >> %(message)s")
+logger = create_logger(path=f"{wkdir}/cnn_model/log/{args.model}_{datetime.datetime.now().strftime('%y%m%d')}.log", formatter="[%(asctime)s][%(levelname)s] >> %(message)s")
 
 if __name__ == "__main__":
     try:
@@ -113,7 +113,7 @@ if __name__ == "__main__":
             torch.save(test_loader, f'{wkdir}/dataset/stanford_cars/cars_test.dl')
             
             toc = time.time() - tic
-            logger.info(f"[ END ] 데이터 세팅 | 소요시간: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}")
+            logger.info(f"[ END ] 데이터 세팅 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
 
         else:
             tic = time.time()
@@ -123,7 +123,7 @@ if __name__ == "__main__":
             test_loader = torch.load(f'{wkdir}/dataset/stanford_cars/cars_test.dl')
             
             toc = time.time() - tic
-            logger.info(f"[ END ] 데이터 불러오기 | 소요시간: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}")
+            logger.info(f"[ END ] 데이터 불러오기 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
 
         class model_setup(nn.Module):
 
@@ -155,7 +155,7 @@ if __name__ == "__main__":
         model_cls = model_cls.to(device)
         
         toc = time.time() - tic
-        logger.info(f"[ END ] 학습 모델 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}")
+        logger.info(f"[ END ] 학습 모델 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
             
         loss_func = nn.CrossEntropyLoss(reduction='sum')
         opt = optim.Adam(model_cls.parameters(), lr=0.001)
@@ -217,7 +217,7 @@ if __name__ == "__main__":
             return loss, metric
         
         toc = time.time() - tic
-        logger.info(f"[ END ] Metric, Optimizer 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}")
+        logger.info(f"[ END ] Metric, Optimizer 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
 
         def train(model, params):
 
@@ -238,7 +238,7 @@ if __name__ == "__main__":
             best_loss = float('inf')
 
             tic = time.time()
-            logger.info(f"[START] 학습 시작")
+            logger.info(f"[START] {args.model} 학습")
             for epoch in range(num_epochs):
                 
                 tic_epoch = time.time()
@@ -266,11 +266,11 @@ if __name__ == "__main__":
 
                 lr_scheduler.step(val_loss)
                 
-                toc = time.time() - tic_epoch
-                logger.info(f'\t   ㄴtrain loss: {train_loss:.6f}, val loss: {val_loss:.6f}, accuracy: {100*val_metric:.2f}, time: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}')
+                toc_epoch = time.time() - tic_epoch
+                logger.info(f'\t   ㄴtrain loss: {train_loss:.6f}, val loss: {val_loss:.6f}, accuracy: {100*val_metric:.2f}, time: {int(toc_epoch//3600):02d}:{int(toc_epoch%3600//60):02d}:{int(toc_epoch%60):02d}')
             
             toc = time.time() - tic
-            logger.info(f"[ END ] Metric, Optimizer 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc//3600%60):02d}:{int(toc%60):02d}")
+            logger.info(f"[ END ] {args.model} 학습 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
             # model.load_state_dict(best_model_wts)
 
             return model, loss_history, metric_history
