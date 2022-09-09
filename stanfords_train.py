@@ -1,4 +1,4 @@
-import copy, datetime, time, re, warnings, logging, argparse, os
+import copy, datetime, time, re, warnings, logging, argparse, os, random
 import torch
 from torch import optim
 import torch.nn as nn
@@ -14,10 +14,25 @@ import pandas as pd
 
 warnings.filterwarnings(action="ignore")
 wkdir = "/data1/lj"
+
+# random seed 고정
+random_seed=1701010
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.cuda.manual_seed_all(random_seed) # if use multi-GPU
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(random_seed)
+random.seed(random_seed)
+
+# argparse 설정
 parser = argparse.ArgumentParser(description="stanfordcars classification", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("-m", "--model", required=False, default="mobilenet_v3_small", type=str, help="Training Model 선택")
-parser.add_argument("-e", "--epoch", required=False, default=500, type=int, help="Training Epoch 설정")
+parser.add_argument("-b", "--batch", required=False, default=64, type=int, help="Training Batch Size 설정")
+parser.add_argument("-e", "--epoch", required=False, default=100, type=int, help="Training Epoch 설정")
 parser.add_argument("-p", "--path", required=False, default=f"{wkdir}/cnn_model", type=str, help="Best Trained Model 저장경로")
+parser.add_argument("-c", "--cuda", required=False, default=f"0", type=str, help="Graphic Card number")
+
 args = parser.parse_args()
 
 def create_logger(path, formatter):
@@ -151,7 +166,7 @@ if __name__ == "__main__":
         logger.info(f"[START] 학습 모델 셋업")
         
         model_cls = model_setup(args.model)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
         model_cls = model_cls.to(device)
         
         toc = time.time() - tic
@@ -229,8 +244,9 @@ if __name__ == "__main__":
             sanity_check = params["sanity_check"]
             lr_scheduler = params["lr_scheduler"]
 
-            loss_history = {'train': [], 'val': []}
-            metric_history = {'train': [], 'val': []}
+            loss_history = {'train_loss': [], 'val_loss': []}
+            metric_history = {'train_acc': [], 'val_acc': []}
+            time_history = {'time': []}
 
             # # GPU out of memoty error
             # best_model_wts = copy.deepcopy(model.state_dict())
@@ -247,14 +263,14 @@ if __name__ == "__main__":
 
                 model.train()
                 train_loss, train_metric = loss_epoch(model, loss_func, train_dl, sanity_check, opt)
-                loss_history['train'].append(train_loss)
-                metric_history['train'].append(train_metric)
+                loss_history['train_loss'].append(train_loss)
+                metric_history['train_acc'].append(train_metric)
 
                 model.eval()
                 with torch.no_grad():
                     val_loss, val_metric = loss_epoch(model, loss_func, test_dl, sanity_check)
-                loss_history['val'].append(val_loss)
-                metric_history['val'].append(val_metric)
+                loss_history['val_loss'].append(val_loss)
+                metric_history['val_acc'].append(val_metric)
 
                 if val_loss < best_loss:
                     best_loss = val_loss
@@ -267,13 +283,16 @@ if __name__ == "__main__":
                 lr_scheduler.step(val_loss)
                 
                 toc_epoch = time.time() - tic_epoch
+                time_history['time'].append(toc_epoch)
                 logger.info(f'\t   ㄴtrain loss: {train_loss:.6f}, val loss: {val_loss:.6f}, accuracy: {100*val_metric:.2f}, time: {int(toc_epoch//3600):02d}:{int(toc_epoch%3600//60):02d}:{int(toc_epoch%60):02d}')
+            
+            train_hist = pd.concat([pd.DataFrame(loss_history), pd.DataFrame(metric_history), pd.DataFrame(time_history)], axis=1)
             
             toc = time.time() - tic
             logger.info(f"[ END ] {args.model} 학습 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
             # model.load_state_dict(best_model_wts)
 
-            return model, loss_history, metric_history
+            return model, train_hist
 
         # define the training parameters
         params_train = {
@@ -286,7 +305,8 @@ if __name__ == "__main__":
             'lr_scheduler':lr_scheduler,
         }
 
-        model, loss_hist, metric_hist = train(model_cls, params_train)
+        model, train_hist = train(model_cls, params_train)
+        train_hist.to_csv(f"{args.path}/{args.model}_train_hist.csv", index=False)
         
     except Exception as e:
         logger.error(f"{e}")
