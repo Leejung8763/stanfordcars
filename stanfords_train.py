@@ -3,7 +3,7 @@ import torch
 from torch import optim
 import torch.nn as nn
 from torchsummary import summary
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor, transforms
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
@@ -31,6 +31,7 @@ parser.add_argument("-m", "--model", required=False, default="mobilenet_v3_small
 parser.add_argument("-b", "--batch", required=False, default=64, type=int, help="Training Batch Size 설정")
 parser.add_argument("-e", "--epoch", required=False, default=100, type=int, help="Training Epoch 설정")
 parser.add_argument("-p", "--path", required=False, default=f"{wkdir}/cnn_model", type=str, help="Best Trained Model 저장경로")
+parser.add_argument("-o", "--output", required=False, type=str, help="Best Trained Model 저장명")
 parser.add_argument("-c", "--cuda", required=False, default=f"0", type=str, help="Graphic Card number")
 
 args = parser.parse_args()
@@ -53,92 +54,77 @@ def create_logger(path, formatter):
 
     return logger
 
-logger = create_logger(path=f"{wkdir}/cnn_model/log/{args.model}_{datetime.datetime.now().strftime('%y%m%d')}.log", formatter="[%(asctime)s][%(levelname)s] >> %(message)s")
+logger = create_logger(path=f"{wkdir}/cnn_model/log/{args.output}_{datetime.datetime.now().strftime('%y%m%d')}.log", formatter="[%(asctime)s][%(levelname)s] >> %(message)s")
 
 if __name__ == "__main__":
     try:
-        if len([name for name in os.listdir(f'{wkdir}/dataset/stanford_cars/') if '.dl' in name]) < 1:
-            
-            tic = time.time()
-            logger.info(f"[START] 데이터 세팅")
-            
-            ##############
-            # 데이터 저장 #
-            ##############
-            data_train = datasets.StanfordCars(
-                root=f"{wkdir}/dataset/",
-                split='train',
-                download=True,
-                transform=transforms.Compose([transforms.Resize((224,224)), ToTensor()])
-            )
+        tic = time.time()
+        logger.info(f"[START] 데이터 세팅")
 
-            data_test = datasets.StanfordCars(
-                root=f"{wkdir}/dataset/",
-                split='test',
-                download=True,
-                transform=transforms.Compose([transforms.Resize((224,224)), ToTensor()])
-            )
-
-            ################
-            # 데이터 표준화 #
-            ################
-            # To normalize the dataset, calculate the mean and std
-            meanRGB_train = [np.mean(x.numpy(), axis=(1,2)) for x, _ in data_train]
-            stdRGB_train = [np.std(x.numpy(), axis=(1,2)) for x, _ in data_test]
-            meanR_train = np.mean([m[0] for m in meanRGB_train])
-            meanG_train = np.mean([m[1] for m in meanRGB_train])
-            meanB_train = np.mean([m[2] for m in meanRGB_train])
-            stdR_train = np.mean([s[0] for s in stdRGB_train])
-            stdG_train = np.mean([s[1] for s in stdRGB_train])
-            stdB_train = np.mean([s[2] for s in stdRGB_train])
-
-            # To normalize the dataset, calculate the mean and std
-            meanRGB_test = [np.mean(x.numpy(), axis=(1,2)) for x, _ in data_test]
-            stdRGB_test = [np.std(x.numpy(), axis=(1,2)) for x, _ in data_test]
-            meanR_test = np.mean([m[0] for m in meanRGB_test])
-            meanG_test = np.mean([m[1] for m in meanRGB_test])
-            meanB_test = np.mean([m[2] for m in meanRGB_test])
-            stdR_test = np.mean([s[0] for s in stdRGB_test])
-            stdG_test = np.mean([s[1] for s in stdRGB_test])
-            stdB_test = np.mean([s[2] for s in stdRGB_test])
-
-            # Transformation Setup
-            transform_train = transforms.Compose([
-                transforms.ToTensor(),
+        ##############
+        # 데이터 저장 #
+        ##############
+        data_train_base = datasets.StanfordCars(
+            root=f"{wkdir}/dataset/",
+            split='train',
+            download=True,
+            transform=transforms.Compose([
                 transforms.Resize((224,224)),
-                transforms.Normalize([meanR_train, meanG_train, meanB_train]
-                                     ,[stdR_train, stdG_train, stdB_train]),
+                ToTensor()
             ])
-
-            transform_test = transforms.Compose([
-                transforms.ToTensor(),
+        )
+        data_test_base = datasets.StanfordCars(
+            root=f"{wkdir}/dataset/",
+            split='test',
+            download=True,
+            transform=transforms.Compose([
+                transforms.Resize((224,224)), 
+                ToTensor()
+            ])
+        )
+        data_train_add = datasets.StanfordCars(
+            root=f"{wkdir}/dataset/",
+            split='train',
+            download=True,
+            transform=transforms.Compose([
                 transforms.Resize((224,224)),
-                transforms.Normalize([meanR_test, meanG_test, meanB_test]
-                                     ,[stdR_test, stdG_test, stdB_test]),
+                ToTensor(),
+                transforms.RandomChoice([
+                    transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomRotation(random.randint(1,359))
+                ]),
+                transforms.Resize((224,224))
             ])
+        )
+        data_test_add = datasets.StanfordCars(
+            root=f"{wkdir}/dataset/",
+            split='test',
+            download=True,
+            transform=transforms.Compose([
+                transforms.Resize((224,224)),
+                ToTensor(),
+                transforms.RandomChoice([
+                    transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomRotation(random.randint(1,359))
+                ]),
+                transforms.Resize((224,224))
+            ])
+        )
 
-            # apply transforamtion
-            data_train.transform = transform_train
-            data_test.transform = transform_test
+        # create DataLoader
+        data_train = ConcatDataset([data_train_base, data_train_add])
+        data_test = ConcatDataset([data_test_base, data_test_add])
+        train_loader = DataLoader(data_train, batch_size=64, shuffle=True)
+        test_loader = DataLoader(data_test, batch_size=64, shuffle=True)
+    #     torch.save(train_loader, f'{wkdir}/dataset/stanford_cars/cars_train.dl')
+    #     torch.save(test_loader, f'{wkdir}/dataset/stanford_cars/cars_test.dl')
 
-            # create DataLoader
-            train_loader = DataLoader(data_train, batch_size=32, shuffle=True)
-            test_loader = DataLoader(data_test, batch_size=32, shuffle=True)
-            torch.save(train_loader, f'{wkdir}/dataset/stanford_cars/cars_train.dl')
-            torch.save(test_loader, f'{wkdir}/dataset/stanford_cars/cars_test.dl')
-            
-            toc = time.time() - tic
-            logger.info(f"[ END ] 데이터 세팅 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
-
-        else:
-            tic = time.time()
-            logger.info(f"[START] 데이터 불러오기")
-            
-            train_loader = torch.load(f'{wkdir}/dataset/stanford_cars/cars_train.dl')
-            test_loader = torch.load(f'{wkdir}/dataset/stanford_cars/cars_test.dl')
-            
-            toc = time.time() - tic
-            logger.info(f"[ END ] 데이터 불러오기 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
+        toc = time.time() - tic
+        logger.info(f"[ END ] 데이터 세팅 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
 
         class model_setup(nn.Module):
 
@@ -276,7 +262,7 @@ if __name__ == "__main__":
                     best_loss = val_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
 
-                    torch.save(model.state_dict(), f'{args.path}/{args.model}.pt')
+                    torch.save(model.state_dict(), f'{args.path}/{args.output}.pt')
                     logger.info('\t   ㄴCopied best model weights!')
                     logger.info('\t   ㄴGet best val_loss')
 
@@ -306,7 +292,7 @@ if __name__ == "__main__":
         }
 
         model, train_hist = train(model_cls, params_train)
-        train_hist.to_csv(f"{args.path}/{args.model}_train_hist.csv", index=False)
+        train_hist.to_csv(f"{args.path}/{args.output}_train_hist.csv", index=False)
         
     except Exception as e:
         logger.error(f"{e}")
