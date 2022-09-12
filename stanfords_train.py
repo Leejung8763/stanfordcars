@@ -25,9 +25,13 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(random_seed)
 random.seed(random_seed)
 
-# argparse 설정
+#################
+# argparse 설정 #
+#################
 parser = argparse.ArgumentParser(description="stanfordcars classification", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("-m", "--model", required=False, default="mobilenet_v3_small", type=str, help="Training Model 선택")
+parser.add_argument("-a", "--augmentation", required=False, default=False, type=int, help="Augmentation 수행 여부`")
+parser.add_argument("-f", "--freeze", required=False, default=0, type=float, help="Layer Freeze 비율`")
 parser.add_argument("-b", "--batch", required=False, default=64, type=int, help="Training Batch Size 설정")
 parser.add_argument("-e", "--epoch", required=False, default=100, type=int, help="Training Epoch 설정")
 parser.add_argument("-p", "--path", required=False, default=f"{wkdir}/cnn_model", type=str, help="Best Trained Model 저장경로")
@@ -36,6 +40,9 @@ parser.add_argument("-c", "--cuda", required=False, default=f"0", type=str, help
 
 args = parser.parse_args()
 
+#################
+# log 생성 코드 #
+#################
 def create_logger(path, formatter):
     
     logger = logging.getLogger(__name__)
@@ -61,79 +68,85 @@ if __name__ == "__main__":
         tic = time.time()
         logger.info(f"[START] 데이터 세팅")
 
-        ##############
-        # 데이터 저장 #
-        ##############
-        data_train_base = datasets.StanfordCars(
-            root=f"{wkdir}/dataset/",
-            split='train',
-            download=True,
-            transform=transforms.Compose([
-                transforms.Resize((224,224)),
-                ToTensor()
-            ])
-        )
-        data_test_base = datasets.StanfordCars(
-            root=f"{wkdir}/dataset/",
-            split='test',
-            download=True,
-            transform=transforms.Compose([
-                transforms.Resize((224,224)), 
-                ToTensor()
-            ])
-        )
-        data_train_add = datasets.StanfordCars(
-            root=f"{wkdir}/dataset/",
-            split='train',
-            download=True,
-            transform=transforms.Compose([
-                transforms.Resize((224,224)),
-                ToTensor(),
-                transforms.RandomChoice([
-                    transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomVerticalFlip(),
-                    transforms.RandomRotation(random.randint(1,359))
-                ]),
-                transforms.Resize((224,224))
-            ])
-        )
-        data_test_add = datasets.StanfordCars(
-            root=f"{wkdir}/dataset/",
-            split='test',
-            download=True,
-            transform=transforms.Compose([
-                transforms.Resize((224,224)),
-                ToTensor(),
-                transforms.RandomChoice([
-                    transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomVerticalFlip(),
-                    transforms.RandomRotation(random.randint(1,359))
-                ]),
-                transforms.Resize((224,224))
-            ])
-        )
-
-        # create DataLoader
-        data_train = ConcatDataset([data_train_base, data_train_add])
-        data_test = ConcatDataset([data_test_base, data_test_add])
+        #############################
+        # 데이터 불러오기 및 핸들링 #
+        #############################
+        if args.augmentation == False:
+            data_train = datasets.StanfordCars(
+                root=f"{wkdir}/dataset/",
+                split='train',
+                download=True,
+                transform=transforms.Compose([
+                    transforms.Resize((224,224)),
+                    ToTensor()
+                ])
+            )
+            data_test = datasets.StanfordCars(
+                root=f"{wkdir}/dataset/",
+                split='test',
+                download=True,
+                transform=transforms.Compose([
+                    transforms.Resize((224,224)), 
+                    ToTensor()
+                ])
+            )
+        else:
+            data_train_add = datasets.StanfordCars(
+                root=f"{wkdir}/dataset/",
+                split='train',
+                download=True,
+                transform=transforms.Compose([
+                    transforms.Resize((224,224)),
+                    ToTensor(),
+                    transforms.RandomChoice([
+                        transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomRotation(random.randint(1,359))
+                    ]),
+                    transforms.Resize((224,224))
+                ])
+            )
+            data_test_add = datasets.StanfordCars(
+                root=f"{wkdir}/dataset/",
+                split='test',
+                download=True,
+                transform=transforms.Compose([
+                    transforms.Resize((224,224)),
+                    ToTensor(),
+                    transforms.RandomChoice([
+                        transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomVerticalFlip(),
+                        transforms.RandomRotation(random.randint(1,359))
+                    ]),
+                    transforms.Resize((224,224))
+                ])
+            )
+            # Concatenate dataset
+            data_train = ConcatDataset([data_train, data_train_add])
+            data_test = ConcatDataset([data_test, data_test_add])
+        
+        # Create Dataloader
         train_loader = DataLoader(data_train, batch_size=64, shuffle=True)
         test_loader = DataLoader(data_test, batch_size=64, shuffle=True)
     #     torch.save(train_loader, f'{wkdir}/dataset/stanford_cars/cars_train.dl')
     #     torch.save(test_loader, f'{wkdir}/dataset/stanford_cars/cars_test.dl')
 
         toc = time.time() - tic
-        logger.info(f"[ END ] 데이터 세팅 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
-
+        logger.info(f"[ END ] 데이터 세팅 | Augmentation: {False if args.augmentation==0 else True} | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
+        
+        ########################
+        # train model 불러오기 #
+        ########################
         class model_setup(nn.Module):
 
             def __init__(self, model_name):
                 super(model_setup, self).__init__()
 
                 self.model = eval(f"models.{model_name}(pretrained=True)")
-
-                # 1000개 클래스 196개로 변환
+                    
+                # classifier 1000개 클래스 196개로 변환
                 if "resnet" in model_name:
                     self.model.fc = nn.Linear(self.model.fc.in_features, 196)
                 elif "googlenet" in model_name:
@@ -155,8 +168,25 @@ if __name__ == "__main__":
         device = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
         model_cls = model_cls.to(device)
         
+        ######################
+        # model freeze setup #
+        ######################
+        block_cnt = 0
+        block_cnt_tot = len(np.unique([re.split('weight|bias|fc', name)[0] for name, _ in model_cls.named_parameters()]))
+        block_name = None
+
+        for name, param in model_cls.named_parameters():
+            # block count
+            if block_name != re.split('weight|bias|fc', name)[0]:
+                block_name = re.split('weight|bias|fc', name)[0]
+                block_cnt += 1
+            block_rate = np.round(block_cnt/block_cnt_tot, 2)
+            # freeze level set
+            if block_rate <= args.freeze:
+                param.requires_grad=False
+                
         toc = time.time() - tic
-        logger.info(f"[ END ] 학습 모델 셋업 | 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
+        logger.info(f"[ END ] 학습 모델 셋업 | Model: {args.model} & Freeze: {args.freeze}| 소요시간: {int(toc//3600):02d}:{int(toc%3600//60):02d}:{int(toc%60):02d}")
             
         loss_func = nn.CrossEntropyLoss(reduction='sum')
         opt = optim.Adam(model_cls.parameters(), lr=0.001)
@@ -164,6 +194,7 @@ if __name__ == "__main__":
         
         tic = time.time()
         logger.info(f"[START] Metric, Optimizer 셋업")
+        
         # function to get current lr
         def get_lr(opt):
 
