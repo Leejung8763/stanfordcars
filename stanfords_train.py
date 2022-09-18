@@ -99,9 +99,9 @@ if __name__ == "__main__":
                     transforms.Resize((224,224)),
                     ToTensor(),
                     transforms.RandomChoice([
-                        transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.RandomVerticalFlip(),
+                        transforms.CenterCrop((random.randint(100,200), random.randint(100,200))),
+                        transforms.RandomHorizontalFlip(p=1),
+                        transforms.RandomVerticalFlip(p=1),
                         transforms.RandomRotation(random.randint(1,359))
                     ]),
                     transforms.Resize((224,224))
@@ -115,9 +115,9 @@ if __name__ == "__main__":
                     transforms.Resize((224,224)),
                     ToTensor(),
                     transforms.RandomChoice([
-                        transforms.CenterCrop((random.randint(1,359), random.randint(1,359))),
-                        transforms.RandomHorizontalFlip(),
-                        transforms.RandomVerticalFlip(),
+                        transforms.CenterCrop((random.randint(100,200), random.randint(100,200))),
+                        transforms.RandomHorizontalFlip(p=1),
+                        transforms.RandomVerticalFlip(p=1),
                         transforms.RandomRotation(random.randint(1,359))
                     ]),
                     transforms.Resize((224,224))
